@@ -18,6 +18,19 @@ type RsuOrder struct {
 	MarketPriceOnVestedStockPerShare      float64
 }
 
+type RsuOrderSummary struct {
+	RsuOrder                   *RsuOrder
+	TotalSellingPrice          float64
+	EffectiveCommission        float64
+	NetResult                  float64
+	IsProfitable               bool
+	ProfitBeforeCapitalGainTax float64
+	CapitalGainTaxAmount       float64
+	ProfitAfterCapitalGainTax  float64
+	TotalIncomeTaxIncurred     float64
+	ProfitOrLossAfterIncomeTax float64
+}
+
 func (r *RsuOrder) CalculateProfitOrLoss() float64 {
 	var effectiveTransactionCommission float64
 	effectiveTransactionCommission = 0
@@ -37,4 +50,35 @@ func (r *RsuOrder) CalculateCapitalGainTaxAmount(profit float64) (float64, error
 
 func (r *RsuOrder) CalculateEffectiveIncomeTaxAmount() float64 {
 	return float64(r.NumberOfSharesSold) * r.MarketPriceOnVestedStockPerShare * r.IncomeTaxPercentOnVestedStockPerShare / 100
+}
+
+func (r *RsuOrder) CalculateRsuOrderSummary() *RsuOrderSummary {
+
+	totalSellingPrice := r.SellingPricePerShare * float64(r.NumberOfSharesSold)
+	effectiveTransactionCommission := float64(r.NumberOfTransactions) * r.CommissionPaidPerTransaction
+	netResult := r.CalculateProfitOrLoss()
+	isProfitable := netResult > 0
+
+	var capitalGainTaxAmount float64
+	var effectiveProfit float64
+
+	if isProfitable {
+		capitalGainTaxAmount, _ = r.CalculateCapitalGainTaxAmount(netResult)
+		effectiveProfit = netResult - capitalGainTaxAmount
+	}
+
+	totalIncomeTaxIncurred := r.CalculateEffectiveIncomeTaxAmount()
+	effectiveProfitOrLoss := netResult - totalIncomeTaxIncurred
+
+	return &RsuOrderSummary{
+		TotalSellingPrice:          totalSellingPrice,
+		EffectiveCommission:        effectiveTransactionCommission,
+		NetResult:                  netResult,
+		IsProfitable:               isProfitable,
+		ProfitBeforeCapitalGainTax: netResult,
+		CapitalGainTaxAmount:       capitalGainTaxAmount,
+		ProfitAfterCapitalGainTax:  effectiveProfit,
+		TotalIncomeTaxIncurred:     totalIncomeTaxIncurred,
+		ProfitOrLossAfterIncomeTax: effectiveProfitOrLoss,
+	}
 }

@@ -20,18 +20,12 @@ func loadEspp(app *tview.Application) *tview.Flex {
 	costPerShare := tview.NewInputField().
 		SetLabel("Cost price per share ($)").
 		SetFieldWidth(20).
-		SetAcceptanceFunc(func(text string, lastChar rune) bool {
-			_, err := strconv.ParseFloat(text, 64)
-			return err == nil || text == ""
-		})
+		SetAcceptanceFunc(acceptFloat64InputValue)
 
 	discountPercent := tview.NewInputField().
 		SetLabel("Discounted (buying) price percent per share (%)").
 		SetFieldWidth(20).
-		SetAcceptanceFunc(func(text string, lastChar rune) bool {
-			_, err := strconv.ParseFloat(text, 64)
-			return err == nil || text == ""
-		})
+		SetAcceptanceFunc(acceptFloat64InputValue)
 
 	form := tview.NewForm()
 
@@ -42,35 +36,31 @@ func loadEspp(app *tview.Application) *tview.Flex {
 	sellingPricePerShare := tview.NewInputField().
 		SetLabel("Selling price per share ($)").
 		SetFieldWidth(20).
-		SetAcceptanceFunc(func(text string, lastChar rune) bool {
-			_, err := strconv.ParseFloat(text, 64)
-			return err == nil || text == ""
-		})
+		SetAcceptanceFunc(acceptFloat64InputValue)
 
 	shareQty := tview.NewInputField().
 		SetLabel("Number of shares sold").
 		SetFieldWidth(20).
-		SetAcceptanceFunc(func(text string, lastChar rune) bool {
-			_, err := strconv.ParseInt(text, 0, 64)
-			return err == nil || text == ""
-		})
+		SetAcceptanceFunc(acceptIntInputValue)
 
 	form.AddFormItem(sellingPricePerShare).
 		AddFormItem(shareQty)
 
 	// Commission Group
 	commissionAmountField := tview.NewInputField().
-		SetLabel("Commission Amount per Transaction ($): ").
-		SetFieldWidth(20)
+		SetLabel("Commission Fee Amount per Transaction ($): ").
+		SetFieldWidth(20).
+		SetAcceptanceFunc(acceptFloat64InputValue)
 	commissionAmountField.SetDisabled(true)
 
 	numTransactionsField := tview.NewInputField().
 		SetLabel("Number of Transactions: ").
-		SetFieldWidth(20)
+		SetFieldWidth(20).
+		SetAcceptanceFunc(acceptIntInputValue)
 	numTransactionsField.SetDisabled(true)
 
 	commissionCheckbox := tview.NewCheckbox().
-		SetLabel("Add commission fee (hit Enter to toggle): ").
+		SetLabel("Add commission fee (hit Enter/Space to toggle): ").
 		SetChangedFunc(func(checked bool) {
 			if !checked {
 				commissionAmountField.SetText("")
@@ -87,10 +77,11 @@ func loadEspp(app *tview.Application) *tview.Flex {
 	// Tax Group
 	capitalGainTaxField := tview.NewInputField().
 		SetLabel("Capital Gain Tax Percent percent (Short-Term: 10%-35%) (Long-Term: 0%-20%): ").
-		SetFieldWidth(20)
+		SetFieldWidth(20).
+		SetAcceptanceFunc(acceptFloat64InputValue)
 	capitalGainTaxField.SetDisabled(true)
 
-	taxCheckbox := tview.NewCheckbox().SetLabel("Calculate Capital Gain Tax (hit Enter to toggle): ").SetChangedFunc(func(checked bool) {
+	taxCheckbox := tview.NewCheckbox().SetLabel("Calculate Capital Gain Tax (hit Enter/Space					 to toggle): ").SetChangedFunc(func(checked bool) {
 		if !checked {
 			capitalGainTaxField.SetText("")
 		}
@@ -111,7 +102,8 @@ func loadEspp(app *tview.Application) *tview.Flex {
 		numOfTransactions, _ := strconv.Atoi(numTransactionsField.GetText())
 		considerCapitalGainTax := taxCheckbox.IsChecked()
 		capitalGainTax, _ := strconv.ParseFloat(capitalGainTaxField.GetText(), 64)
-		calculateEspp(costPerShareValue,
+
+		esppOrder := buildEsppOrder(costPerShareValue,
 			discountPercentValue,
 			sellingPricePerShareValue,
 			shareQtyValue,
@@ -119,9 +111,32 @@ func loadEspp(app *tview.Application) *tview.Flex {
 			commissionAmount,
 			numOfTransactions,
 			considerCapitalGainTax,
-			capitalGainTax,
-			status,
-			summary)
+			capitalGainTax)
+
+		calculateEspp(esppOrder, status, summary)
+	})
+
+	form.AddButton("Target Profits", func() {
+		costPerShareValue, _ := strconv.ParseFloat(costPerShare.GetText(), 64)
+		discountPercentValue, _ := strconv.ParseFloat(discountPercent.GetText(), 64)
+		sellingPricePerShareValue, _ := strconv.ParseFloat(sellingPricePerShare.GetText(), 64)
+		shareQtyValue, _ := strconv.Atoi(shareQty.GetText())
+		considerCommission := commissionCheckbox.IsChecked()
+		commissionAmount, _ := strconv.ParseFloat(commissionAmountField.GetText(), 64)
+		numOfTransactions, _ := strconv.Atoi(numTransactionsField.GetText())
+		considerCapitalGainTax := taxCheckbox.IsChecked()
+		capitalGainTax, _ := strconv.ParseFloat(capitalGainTaxField.GetText(), 64)
+
+		esppOrder := buildEsppOrder(costPerShareValue,
+			discountPercentValue,
+			sellingPricePerShareValue,
+			shareQtyValue,
+			considerCommission,
+			commissionAmount,
+			numOfTransactions,
+			considerCapitalGainTax,
+			capitalGainTax)
+		calculateEsppTargetProfits(esppOrder, status, summary, form, app)
 	})
 
 	// Create a Exit Button
@@ -160,8 +175,120 @@ func loadEspp(app *tview.Application) *tview.Flex {
 	return flex // Return the flex layout
 }
 
-func calculateEspp(costPerShare float64, discountPercent float64, sellingPricePerShare float64, shareQty int, considerCommission bool, commissionAmount float64, numOfTransactions int, considerCapitalGainTax bool, capitalGainTax float64, status *tview.TextView, summary *tview.Flex) {
+func calculateEsppTargetProfits(esppOrder *types.EsppOrder,
+	status *tview.TextView,
+	summary *tview.Flex,
+	form *tview.Form,
+	app *tview.Application) {
+
 	status.SetText("Calculating...")
+	clearFlexItems(summary)
+
+	// Create a new table
+	table := tview.NewTable().
+		SetBorders(true).
+		SetFixed(1, 1)
+
+	for index, header := range []string{
+		"Target Profit %",
+		"Selling price/share ($)",
+		"Total Selling Price ($)",
+		"Total Cost ($)",
+		"Effective Commission ($)",
+		"Profit Before Tax ($)",
+		"Capital Gain Tax ($)",
+		"Profit After Tax ($)",
+	} {
+		table.SetCell(0, index, tview.NewTableCell(header).
+			SetTextColor(tcell.ColorYellow).
+			SetAlign(tview.AlignCenter).
+			SetSelectable(false))
+	}
+
+	// Populate the table with selling prices for each target profit percentage
+	row := 1
+	for percent := 0.0; percent <= 100.0; percent += 5 {
+		// Calculate the selling price for the current percentage
+		sellingPrice, err := esppOrder.CalculateSellingPriceForTargetProfitPercent(percent)
+		if err != nil {
+			sellingPrice = -1 // Handle error case by setting to 0 or any fallback
+		}
+
+		// Set profit percentage and calculated selling price in the table
+		var targetProfitHeader = fmt.Sprintf("%.0f%%", percent)
+		if percent == 0 {
+			targetProfitHeader = fmt.Sprintf("%.0f%% (break-even)", percent)
+		}
+		var col = 0
+		table.SetCell(row, col, tview.NewTableCell(targetProfitHeader).
+			SetAlign(tview.AlignCenter))
+		col++
+		table.SetCell(row, col, tview.NewTableCell(fmt.Sprintf("$%.2f", sellingPrice)).
+			SetAlign(tview.AlignCenter))
+		col++
+
+		esppOrderClone := esppOrder.Clone()
+		esppOrderClone.SellingPricePerShare = sellingPrice
+		esppOrderSummary := esppOrderClone.CalculateEsppOrderSummary()
+		table.SetCell(row, col, tview.NewTableCell(fmt.Sprintf("$%.2f", esppOrderSummary.TotalSellingPrice)).
+			SetAlign(tview.AlignCenter))
+		col++
+		table.SetCell(row, col, tview.NewTableCell(fmt.Sprintf("$%.2f", esppOrderSummary.TotalCost)).
+			SetAlign(tview.AlignCenter))
+		col++
+		table.SetCell(row, col, tview.NewTableCell(fmt.Sprintf("$%.2f", esppOrderSummary.EffectiveCommission)).
+			SetAlign(tview.AlignCenter))
+		col++
+		table.SetCell(row, col, tview.NewTableCell(fmt.Sprintf("$%.2f", esppOrderSummary.ProfitBeforeCapitalGainTax)).
+			SetAlign(tview.AlignCenter))
+		col++
+		table.SetCell(row, col, tview.NewTableCell(fmt.Sprintf("$%.2f", esppOrderSummary.CapitalGainTaxAmount)).
+			SetAlign(tview.AlignCenter))
+		col++
+		table.SetCell(row, col, tview.NewTableCell(fmt.Sprintf("$%.2f", esppOrderSummary.ProfitAfterCapitalGainTax)).
+			SetAlign(tview.AlignCenter))
+		col++
+
+		row++
+	}
+
+	enableTableScroll(table)
+	table.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		switch event.Key() {
+		case tcell.KeyCtrlI:
+			app.SetFocus(form)
+		}
+		return event
+	})
+	form.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		switch event.Key() {
+		case tcell.KeyCtrlD:
+			if currentDataView == "ESPP_TARGET_PROFITS" {
+				app.SetFocus(table)
+			}
+		}
+		return event
+	})
+
+	// Set up the layout with the table
+	summary.
+		SetDirection(tview.FlexRow).
+		AddItem(table, 0, 1, true)
+
+	status.SetText("Target Profits: [ <ctrl+i> to switch focus to input form | <ctrl+d> to switch focus to Data View ]")
+	app.SetFocus(table)
+	currentDataView = "ESPP_TARGET_PROFITS"
+}
+
+func buildEsppOrder(costPerShare float64,
+	discountPercent float64,
+	sellingPricePerShare float64,
+	shareQty int,
+	considerCommission bool,
+	commissionAmount float64,
+	numOfTransactions int,
+	considerCapitalGainTax bool,
+	capitalGainTax float64) *types.EsppOrder {
 	esppOrder := types.EsppOrder{}
 	// Retrieve values
 	esppOrder.CostPerShare = costPerShare
@@ -179,12 +306,16 @@ func calculateEspp(costPerShare float64, discountPercent float64, sellingPricePe
 		esppOrder.ConsiderCapitalGainTax = true
 		esppOrder.CapitalGainTaxPercent = capitalGainTax
 	}
+	return &esppOrder
+}
 
-	// Loop in reverse to remove all items
-	for i := summary.GetItemCount() - 1; i >= 0; i-- {
-		summary.RemoveItem(summary.GetItem(i))
-	}
+func calculateEspp(esppOrder *types.EsppOrder,
+	status *tview.TextView,
+	summary *tview.Flex) {
+	status.SetText("Calculating...")
+	clearFlexItems(summary)
 
+	esppOrderSummary := esppOrder.CalculateEsppOrderSummary()
 	costField := tview.NewTextView().
 		SetLabel(fmt.Sprintf("Cost: $%.2f", esppOrder.CostPerShare)).
 		SetTextAlign(tview.AlignLeft)
@@ -195,7 +326,7 @@ func calculateEspp(costPerShare float64, discountPercent float64, sellingPricePe
 		SetTextAlign(tview.AlignLeft)
 	summary.AddItem(discountField, 1, 1, false)
 
-	effectiveCostPerShare := esppOrder.CalculateEffectiveCostPerShare()
+	effectiveCostPerShare := esppOrderSummary.EffectiveCostPerShare
 	effectiveCostPerShareField := tview.NewTextView().
 		SetLabel(fmt.Sprintf("Effective cost per share: $%.2f", effectiveCostPerShare)).
 		SetTextAlign(tview.AlignLeft)
@@ -211,15 +342,22 @@ func calculateEspp(costPerShare float64, discountPercent float64, sellingPricePe
 		SetTextAlign(tview.AlignLeft)
 	summary.AddItem(numberOfSharesSoldField, 1, 1, false)
 
-	totalSellingPrice := esppOrder.SellingPricePerShare * float64(esppOrder.NumberOfSharesSold)
+	totalSellingPrice := esppOrderSummary.TotalSellingPrice
 	totalSellingPriceField := tview.NewTextView().
 		SetLabel(fmt.Sprintf("Total selling price (%d * $%.2f): $%.2f",
 			esppOrder.NumberOfSharesSold, esppOrder.SellingPricePerShare, totalSellingPrice)).
 		SetTextAlign(tview.AlignLeft)
 	summary.AddItem(totalSellingPriceField, 1, 1, false)
 
+	totalCost := esppOrderSummary.TotalCost
+	totalCostField := tview.NewTextView().
+		SetLabel(fmt.Sprintf("Total cost (%d * $%.2f): $%.2f",
+			esppOrder.NumberOfSharesSold, esppOrderSummary.EffectiveCostPerShare, totalCost)).
+		SetTextAlign(tview.AlignLeft)
+	summary.AddItem(totalCostField, 1, 1, false)
+
 	if esppOrder.ConsiderTransactionCommission {
-		effectiveTransactionCommission := float64(esppOrder.NumberOfTransactions) * esppOrder.CommissionPaidPerTransaction
+		effectiveTransactionCommission := esppOrderSummary.EffectiveCommission
 		effectiveTransactionCommissionField := tview.NewTextView().
 			SetLabel(fmt.Sprintf("Effective commission fee (%d * $%.2f): $%.2f",
 				esppOrder.NumberOfTransactions, esppOrder.CommissionPaidPerTransaction, effectiveTransactionCommission)).
@@ -227,25 +365,21 @@ func calculateEspp(costPerShare float64, discountPercent float64, sellingPricePe
 		summary.AddItem(effectiveTransactionCommissionField, 1, 1, false)
 	}
 
-	profitOrLoss := esppOrder.CalculateProfitOrLoss()
-	if profitOrLoss > 0 {
+	profitOrLoss := esppOrderSummary.NetResult
+	if esppOrderSummary.IsProfitable {
 		profitOrLossField := tview.NewTextView().
 			SetLabel(fmt.Sprintf("Profit (before capital gains tax): $%.2f", profitOrLoss)).
 			SetTextAlign(tview.AlignLeft)
 		summary.AddItem(profitOrLossField, 1, 1, false)
 
 		if esppOrder.ConsiderCapitalGainTax {
-			capitalGainTaxAmount, err := esppOrder.CalculateCapitalGainTaxAmount(profitOrLoss)
-			if err != nil {
-				status.SetText(fmt.Sprintf("Error: %v", err.Error()))
-				return
-			}
+			capitalGainTaxAmount := esppOrderSummary.CapitalGainTaxAmount
 			capitalGainTaxAmountField := tview.NewTextView().
 				SetLabel(fmt.Sprintf("Captial gain tax amount: $%.2f", capitalGainTaxAmount)).
 				SetTextAlign(tview.AlignLeft)
 			summary.AddItem(capitalGainTaxAmountField, 1, 1, false)
 
-			effectiveProfit := profitOrLoss - capitalGainTaxAmount
+			effectiveProfit := esppOrderSummary.ProfitAfterCapitalGainTax
 			effectiveProfitField := tview.NewTextView().
 				SetLabel(fmt.Sprintf("Profit (after capital gain tax): $%.2f", effectiveProfit)).
 				SetTextAlign(tview.AlignLeft)
@@ -264,4 +398,5 @@ func calculateEspp(costPerShare float64, discountPercent float64, sellingPricePe
 	}
 
 	status.SetText("Summary: ")
+	currentDataView = "ESPP_ORDER_SUMMARY"
 }
