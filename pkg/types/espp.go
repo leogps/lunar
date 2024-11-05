@@ -3,6 +3,7 @@ package types
 import (
 	"fmt"
 	"math"
+	"strings"
 )
 
 type EsppOrder struct {
@@ -20,16 +21,52 @@ type EsppOrder struct {
 }
 
 type EsppOrderSummary struct {
-	EsppOrder                  *EsppOrder
-	EffectiveCostPerShare      float64
-	TotalSellingPrice          float64
-	TotalCost                  float64
-	EffectiveCommission        float64
-	NetResult                  float64
-	IsProfitable               bool
-	ProfitBeforeCapitalGainTax float64
-	CapitalGainTaxAmount       float64
-	ProfitAfterCapitalGainTax  float64
+	EsppOrder             *EsppOrder
+	EffectiveCostPerShare float64
+	TotalSellingPrice     float64
+	TotalCost             float64
+	EffectiveCommission   float64
+	NetResult             float64
+	CapitalGainTaxAmount  float64
+}
+
+func (e *EsppOrderSummary) IsProfitable() bool {
+	return e.TrueProfitOrLoss() > 0
+}
+
+func (e *EsppOrderSummary) ProfitOrLossAfterCapitalGainsTax() float64 {
+	return e.NetResult - e.CapitalGainTaxAmount
+}
+
+func (e *EsppOrderSummary) TrueProfitOrLoss() float64 {
+	trueProfitOrLoss := e.NetResult
+	if e.EsppOrder.ConsiderCapitalGainTax {
+		trueProfitOrLoss -= e.CapitalGainTaxAmount
+	}
+	return trueProfitOrLoss
+}
+
+func (e *EsppOrderSummary) ProfitOrLossMargin() float64 {
+	effectiveProfit := e.TrueProfitOrLoss()
+	return (effectiveProfit / (e.TotalCost + e.EffectiveCommission + e.CapitalGainTaxAmount)) * 100
+}
+
+func (e *EsppOrderSummary) ToString() string {
+	var sb strings.Builder
+
+	sb.WriteString("ESPP Order Summary:\n")
+	sb.WriteString(fmt.Sprintf("  Effective Cost Per Share:      $%.2f\n", e.EffectiveCostPerShare))
+	sb.WriteString(fmt.Sprintf("  Total Selling Price:           $%.2f\n", e.TotalSellingPrice))
+	sb.WriteString(fmt.Sprintf("  Total Cost:                    $%.2f\n", e.TotalCost))
+	sb.WriteString(fmt.Sprintf("  Effective Commission:          $%.2f\n", e.EffectiveCommission))
+	sb.WriteString(fmt.Sprintf("  Net Result: 					$%.2f\n", e.NetResult))
+	sb.WriteString(fmt.Sprintf("  Capital Gain Tax Amount:       $%.2f\n", e.CapitalGainTaxAmount))
+	sb.WriteString(fmt.Sprintf("  Profit After Capital Gain Tax: $%.2f\n", e.ProfitOrLossAfterCapitalGainsTax()))
+	sb.WriteString(fmt.Sprintf("  Profit/Loss Margin: 			%.2f%%\n", e.ProfitOrLossMargin()))
+	sb.WriteString(fmt.Sprintf("  Net Result:                    $%.2f\n", e.NetResult))
+	sb.WriteString(fmt.Sprintf("  Is Profitable:                 %t\n", e.IsProfitable()))
+
+	return sb.String()
 }
 
 // Clone creates a deep copy of the EsppOrder
@@ -84,24 +121,18 @@ func (e *EsppOrder) CalculateEsppOrderSummary() *EsppOrderSummary {
 		effectiveTransactionCommission = float64(e.NumberOfTransactions) * e.CommissionPaidPerTransaction
 	}
 	netResult := e.CalculateProfitOrLoss()
-	isProfitable := netResult > 0
 	var capitalGainTaxAmount float64
-	var effectiveProfit float64
-	if isProfitable {
+	if netResult > 0 {
 		capitalGainTaxAmount, _ = e.CalculateCapitalGainTaxAmount(netResult)
-		effectiveProfit = netResult - capitalGainTaxAmount
 	}
 	return &EsppOrderSummary{
-		EsppOrder:                  e,
-		EffectiveCostPerShare:      effectiveCostPerShare,
-		TotalSellingPrice:          totalSellingPrice,
-		TotalCost:                  totalCost,
-		EffectiveCommission:        effectiveTransactionCommission,
-		NetResult:                  netResult,
-		IsProfitable:               isProfitable,
-		ProfitBeforeCapitalGainTax: netResult,
-		CapitalGainTaxAmount:       capitalGainTaxAmount,
-		ProfitAfterCapitalGainTax:  effectiveProfit,
+		EsppOrder:             e,
+		EffectiveCostPerShare: effectiveCostPerShare,
+		TotalSellingPrice:     totalSellingPrice,
+		TotalCost:             totalCost,
+		EffectiveCommission:   effectiveTransactionCommission,
+		NetResult:             netResult,
+		CapitalGainTaxAmount:  capitalGainTaxAmount,
 	}
 }
 
@@ -138,7 +169,7 @@ func (e *EsppOrder) CalculateSellingPriceForTargetProfitPercent(targetProfitPerc
 		profitAfterTax := profitBeforeTax - capitalGainsTax
 
 		// Calculate the target profit after tax
-		targetProfitAfterTax := (targetProfitPercent / 100) * (effectiveCost + float64(e.NumberOfTransactions)*e.CommissionPaidPerTransaction + capitalGainsTax)
+		targetProfitAfterTax := (targetProfitPercent / 100) * (effectiveCost + capitalGainsTax)
 
 		if math.Abs(profitAfterTax-targetProfitAfterTax) < 0.01 { // Convergence condition
 			break

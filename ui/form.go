@@ -6,7 +6,18 @@ import (
 	"strconv"
 )
 
-var currentDataView string
+type DataView int
+
+const (
+	EsppOrderSummary DataView = iota
+	EsppTargetProfits
+	EsppError
+	RsuOrderSummary
+	RsuTargetProfits
+	RsuError
+)
+
+var currentDataView DataView
 
 func StartApp() error {
 	app := tview.NewApplication()

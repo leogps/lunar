@@ -33,7 +33,7 @@ var rsuCmd = &cobra.Command{
 func handleRsu() {
 	rsuOrder := types.RsuOrder{}
 
-	sellingPrice, err := PromptAndValidate[float64]("What is the selling price per share? ")
+	sellingPrice, err := PromptAndValidate[float64]("What is the selling price per share ($)? ")
 	if err != nil {
 		utils.LogError("error occurred", err)
 		os.Exit(1)
@@ -47,7 +47,7 @@ func handleRsu() {
 	}
 	rsuOrder.NumberOfSharesSold = numberOfShares
 
-	considerTransactionCommission, err := PromptAndValidate[bool]("Consider transaction commission? ")
+	considerTransactionCommission, err := PromptAndValidate[bool]("Consider transaction commission[Y/N]? ")
 	if err != nil {
 		utils.LogError("error occurred", err)
 		os.Exit(1)
@@ -55,7 +55,7 @@ func handleRsu() {
 	rsuOrder.ConsiderTransactionCommission = considerTransactionCommission
 
 	if considerTransactionCommission {
-		commissionPaidPerTransaction, err := PromptAndValidate[float64]("What is the commission paid per transaction? ")
+		commissionPaidPerTransaction, err := PromptAndValidate[float64]("What is the commission paid per transaction ($)? ")
 		if err != nil {
 			utils.LogError("error occurred", err)
 			os.Exit(1)
@@ -70,11 +70,12 @@ func handleRsu() {
 		rsuOrder.NumberOfTransactions = numberOfTransactions
 	}
 
-	profitOrLoss := rsuOrder.CalculateProfitOrLoss()
+	profitOrLoss := rsuOrder.CalculateEffectiveProfitOrLoss()
+	var capitalGainTaxAmount float64
 	if profitOrLoss > 0 {
 		utils.LogInfo("Profit: $%.2f", profitOrLoss)
 
-		deductCapitalGains, err := PromptAndValidate[bool]("Do you want to calculate capital gain tax and deduct from the profit? ")
+		deductCapitalGains, err := PromptAndValidate[bool]("Do you want to calculate capital gain tax and deduct from the profit[Y/N]? ")
 		if err != nil {
 			utils.LogError("error occurred", err)
 			os.Exit(1)
@@ -88,51 +89,74 @@ func handleRsu() {
 			}
 			rsuOrder.CapitalGainTaxPercent = capitalGainTaxPercent
 
-			capitalGainTaxAmount, err := rsuOrder.CalculateCapitalGainTaxAmount(profitOrLoss)
+			marketPriceOnVestedStockPerShare, err := PromptAndValidate[float64]("What is the (FMV) market price on vested stock per share ($)? ")
 			if err != nil {
 				utils.LogError("error occurred", err)
 				os.Exit(1)
 			}
-			utils.LogInfo("Capital Gain Amount: $%.2f", capitalGainTaxAmount)
+			rsuOrder.MarketValuePerShare = marketPriceOnVestedStockPerShare
 
-			effectiveProfit := profitOrLoss - capitalGainTaxAmount
-			utils.LogInfo("Effective profit: $%.2f", effectiveProfit)
+			capitalGainTaxableAmount := rsuOrder.CalculateProfitOrLossForCapitalGain()
+			if capitalGainTaxableAmount <= 0 {
+				utils.LogInfo("Sold at a loss ($%.2f). No Capital Gain.", capitalGainTaxableAmount)
+			} else {
+				capitalGainTaxAmount, _ = rsuOrder.CalculateCapitalGainTaxAmount(capitalGainTaxableAmount)
+				utils.LogInfo("Capital Gain tax amount: $%.2f", capitalGainTaxAmount)
+				effectiveProfit := profitOrLoss - capitalGainTaxAmount
+				utils.LogInfo("Effective profit: $%.2f", effectiveProfit)
+			}
+		} else if profitOrLoss < 0 {
+			utils.LogInfo("Loss: $%.2f", profitOrLoss)
+		} else {
+			utils.LogInfo("Broke even: $%.2f", profitOrLoss)
 		}
 
-	} else if profitOrLoss < 0 {
-		utils.LogInfo("Loss: $%.2f", profitOrLoss)
-	} else {
-		utils.LogInfo("Broke even: $%.2f", profitOrLoss)
+		considerIncomeTaxOnVestedStock, err := PromptAndValidate[bool]("Calculate and deduct income tax on vested stock[Y/N]? ")
+		if err != nil {
+			utils.LogError("error occurred", err)
+			os.Exit(1)
+		}
+		if !considerIncomeTaxOnVestedStock {
+			return
+		}
+
+		rsuOrder.ConsiderIncomeTaxOnVestedStock = true
+		incomeTaxIncurredWhenStockVested, err := PromptAndValidate[float64]("What is the income tax paid on vested stock\n(no. of shares traded * income tax %) ($)? ")
+		if err != nil {
+			utils.LogError("error occurred", err)
+			os.Exit(1)
+		}
+		rsuOrder.IncomeTaxIncurredWhenStockVested = incomeTaxIncurredWhenStockVested
+
+		var noOfStocksVested int
+		for {
+			noOfStocksVested, err = PromptAndValidate[int]("Number of stocks vested? ")
+			if err != nil {
+				utils.LogError("error occurred", err)
+				os.Exit(1)
+			}
+			if noOfStocksVested <= 0 {
+				utils.LogWarn("Number of stocks vested must be greater than 0")
+			} else {
+				break
+			}
+		}
+		rsuOrder.NumberOfStocksVested = noOfStocksVested
+
+		incomeTaxPerShare, _ := rsuOrder.CalculateIncomeTaxPerShare()
+		utils.LogInfo("Income tax per share: $%.2f", incomeTaxPerShare)
+
+		totalIncomeTaxIncurred, err := rsuOrder.CalculateTotalIncomeTaxAmount()
+		if err != nil {
+			utils.LogError("error occurred", err)
+			os.Exit(1)
+		}
+		utils.LogInfo("Total Income Tax: $%.2f", totalIncomeTaxIncurred)
+
+		effectiveProfitOrLoss := profitOrLoss - totalIncomeTaxIncurred
+		if deductCapitalGains && capitalGainTaxAmount > 0 {
+			effectiveProfitOrLoss -= capitalGainTaxAmount
+		}
+		utils.LogInfo("True profit/loss: $%.2f", effectiveProfitOrLoss)
 	}
-
-	considerIncomeTaxOnVestedStock, err := PromptAndValidate[bool]("Calculate and deduct income tax on vested stock? ")
-	if err != nil {
-		utils.LogError("error occurred", err)
-		os.Exit(1)
-	}
-	if !considerIncomeTaxOnVestedStock {
-		return
-	}
-
-	rsuOrder.ConsiderIncomeTaxOnVestedStock = true
-
-	incomeTaxPercentOnVestedStockPerShare, err := PromptAndValidate[float64]("What is the income tax percent on vested stock? ")
-	if err != nil {
-		utils.LogError("error occurred", err)
-		os.Exit(1)
-	}
-	rsuOrder.IncomeTaxPercentOnVestedStockPerShare = incomeTaxPercentOnVestedStockPerShare
-
-	marketPriceOnVestedStockPerShare, err := PromptAndValidate[float64]("What is the market price on vested stock per share? ")
-	if err != nil {
-		utils.LogError("error occurred", err)
-		os.Exit(1)
-	}
-	rsuOrder.MarketPriceOnVestedStockPerShare = marketPriceOnVestedStockPerShare
-
-	totalIncomeTaxIncurred := rsuOrder.CalculateEffectiveIncomeTaxAmount()
-	utils.LogInfo("Total Income Tax: $%.2f", totalIncomeTaxIncurred)
-
-	effectiveProfitOrLoss := profitOrLoss - totalIncomeTaxIncurred
-	utils.LogInfo("Effective capital gain/loss: $%.2f", effectiveProfitOrLoss)
 }

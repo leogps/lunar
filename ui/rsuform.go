@@ -34,7 +34,7 @@ func loadRsu(app *tview.Application) *tview.Flex {
 
 	// Commission Group
 	commissionAmountField := tview.NewInputField().
-		SetLabel("Commission Amount per Transaction ($): ").
+		SetLabel("Commission Fee Amount per Transaction ($): ").
 		SetFieldWidth(20).
 		SetAcceptanceFunc(acceptFloat64InputValue)
 	commissionAmountField.SetDisabled(true)
@@ -46,7 +46,7 @@ func loadRsu(app *tview.Application) *tview.Flex {
 	numTransactionsField.SetDisabled(true)
 
 	commissionCheckbox := tview.NewCheckbox().
-		SetLabel("Add commission fee (hit Enter to toggle): ").
+		SetLabel("Add commission fee (hit Enter/Space to toggle): ").
 		SetChangedFunc(func(checked bool) {
 			if !checked {
 				commissionAmountField.SetText("")
@@ -67,7 +67,7 @@ func loadRsu(app *tview.Application) *tview.Flex {
 		SetAcceptanceFunc(acceptFloat64InputValue)
 	capitalGainTaxField.SetDisabled(true)
 
-	taxCheckbox := tview.NewCheckbox().SetLabel("Calculate Capital Gain Tax (hit Enter to toggle): ").SetChangedFunc(func(checked bool) {
+	taxCheckbox := tview.NewCheckbox().SetLabel("Calculate Capital Gain Tax (hit Enter/Space to toggle): ").SetChangedFunc(func(checked bool) {
 		if !checked {
 			capitalGainTaxField.SetText("")
 		}
@@ -79,28 +79,35 @@ func loadRsu(app *tview.Application) *tview.Flex {
 
 	// Income tax Group
 	incomeTaxField := tview.NewInputField().
-		SetLabel("Income Tax percent (State + Federal): ").
+		SetLabel("Income Tax incurred (no. of shares traded * FMV to cover for taxes): ").
 		SetFieldWidth(20).
 		SetAcceptanceFunc(acceptFloat64InputValue)
 	incomeTaxField.SetDisabled(true)
 
-	marketPriceOnVestedStockPerShareField := tview.NewInputField().
-		SetLabel("Market Price On Vested Stock per share ($): ").
+	noOfStocksVestedField := tview.NewInputField().
+		SetLabel("Number of stocks vested: ").
 		SetFieldWidth(20).
 		SetAcceptanceFunc(acceptFloat64InputValue)
-	marketPriceOnVestedStockPerShareField.SetDisabled(true)
+	noOfStocksVestedField.SetDisabled(true)
 
-	incomeTaxCheckbox := tview.NewCheckbox().SetLabel("Calculate Income Tax (hit Enter to toggle): ").SetChangedFunc(func(checked bool) {
+	incomeTaxCheckbox := tview.NewCheckbox().SetLabel("Include Income Tax (hit Enter/Space to toggle): ").SetChangedFunc(func(checked bool) {
 		if !checked {
 			incomeTaxField.SetText("")
-			marketPriceOnVestedStockPerShareField.SetText("")
+			noOfStocksVestedField.SetText("")
 		}
 		incomeTaxField.SetDisabled(!checked)
-		marketPriceOnVestedStockPerShareField.SetDisabled(!checked)
+		noOfStocksVestedField.SetDisabled(!checked)
 	})
 
 	form.AddFormItem(incomeTaxCheckbox).
 		AddFormItem(incomeTaxField).
+		AddFormItem(noOfStocksVestedField)
+
+	marketPriceOnVestedStockPerShareField := tview.NewInputField().
+		SetLabel("Market Price on vested stock per share ($): ").
+		SetFieldWidth(20).
+		SetAcceptanceFunc(acceptFloat64InputValue)
+	form.
 		AddFormItem(marketPriceOnVestedStockPerShareField)
 
 	// Create a Submit Button
@@ -114,7 +121,8 @@ func loadRsu(app *tview.Application) *tview.Flex {
 		capitalGainTax, _ := strconv.ParseFloat(capitalGainTaxField.GetText(), 64)
 
 		considerIncomeTax := incomeTaxCheckbox.IsChecked()
-		incomeTaxPercent, _ := strconv.ParseFloat(incomeTaxField.GetText(), 64)
+		incomeTaxIncurred, _ := strconv.ParseFloat(incomeTaxField.GetText(), 64)
+		noOfStocksVested, _ := strconv.Atoi(noOfStocksVestedField.GetText())
 		marketPriceOnVestedStockPerShare, _ := strconv.ParseFloat(marketPriceOnVestedStockPerShareField.GetText(), 64)
 
 		rsuOrder := buildRsuOrder(sellingPricePerShareValue,
@@ -125,9 +133,38 @@ func loadRsu(app *tview.Application) *tview.Flex {
 			considerCapitalGainTax,
 			capitalGainTax,
 			considerIncomeTax,
-			incomeTaxPercent,
+			incomeTaxIncurred,
+			noOfStocksVested,
 			marketPriceOnVestedStockPerShare)
 		calculateRsu(rsuOrder, status, summary)
+	})
+
+	form.AddButton("Target Profits", func() {
+		sellingPricePerShareValue, _ := strconv.ParseFloat(sellingPricePerShare.GetText(), 64)
+		shareQtyValue, _ := strconv.Atoi(shareQty.GetText())
+		considerCommission := commissionCheckbox.IsChecked()
+		commissionAmount, _ := strconv.ParseFloat(commissionAmountField.GetText(), 64)
+		numOfTransactions, _ := strconv.Atoi(numTransactionsField.GetText())
+		considerCapitalGainTax := taxCheckbox.IsChecked()
+		capitalGainTax, _ := strconv.ParseFloat(capitalGainTaxField.GetText(), 64)
+
+		considerIncomeTax := incomeTaxCheckbox.IsChecked()
+		incomeTaxIncurred, _ := strconv.ParseFloat(incomeTaxField.GetText(), 64)
+		noOfStocksVested, _ := strconv.Atoi(noOfStocksVestedField.GetText())
+		marketPriceOnVestedStockPerShare, _ := strconv.ParseFloat(marketPriceOnVestedStockPerShareField.GetText(), 64)
+
+		rsuOrder := buildRsuOrder(sellingPricePerShareValue,
+			shareQtyValue,
+			considerCommission,
+			commissionAmount,
+			numOfTransactions,
+			considerCapitalGainTax,
+			capitalGainTax,
+			considerIncomeTax,
+			incomeTaxIncurred,
+			noOfStocksVested,
+			marketPriceOnVestedStockPerShare)
+		calculateRsuTargetProfits(rsuOrder, status, summary, form, app)
 	})
 
 	// Create a Exit Button
@@ -166,6 +203,129 @@ func loadRsu(app *tview.Application) *tview.Flex {
 	return flex // Return the flex layout
 }
 
+func calculateRsuTargetProfits(rsuOrder *types.RsuOrder,
+	status *tview.TextView,
+	summary *tview.Flex,
+	form *tview.Form,
+	app *tview.Application) {
+	status.SetText("Calculating...")
+	clearFlexItems(summary)
+
+	if rsuOrder.NumberOfStocksVested <= 0 {
+		status.SetText("Number of stocks vested should be greater than 0. Please fix the errors.")
+		currentDataView = RsuError
+		return
+	}
+
+	// Create a new table
+	table := tview.NewTable().
+		SetBorders(true).
+		SetFixed(1, 1)
+
+	for index, header := range []string{
+		"Profit %",
+		"Selling price/share ($)",
+		"Total Selling Price ($)",
+		"Effective Commission ($)",
+		"Profit Before Tax ($)",
+		"Capital Gain Tax ($)",
+		"Profit After C.G Tax ($)",
+		"Income Tax ($)",
+		"Profit/Loss After Income Tax ($)",
+		"True Profit/Loss ($)",
+	} {
+		table.SetCell(0, index, tview.NewTableCell(header).
+			SetTextColor(tcell.ColorYellow).
+			SetAlign(tview.AlignCenter).
+			SetSelectable(false))
+	}
+
+	// Populate the table with selling prices for each target profit percentage
+	row := 1
+	for percent := 0.0; percent <= 300.0; percent += 5 {
+		// Calculate the selling price for the current percentage
+		sellingPrice, err := rsuOrder.CalculateSellingPriceForTargetProfitPercent(percent)
+		if err != nil {
+			sellingPrice = -1 // Handle error case by setting to 0 or any fallback
+		}
+
+		// Set profit percentage and calculated selling price in the table
+		var targetProfitHeader = fmt.Sprintf("%.0f%%", percent)
+		if percent == 0 {
+			targetProfitHeader = fmt.Sprintf("%.0f%%", percent)
+		}
+		var col = 0
+		table.SetCell(row, col, tview.NewTableCell(targetProfitHeader).
+			SetAlign(tview.AlignCenter))
+		col++
+		table.SetCell(row, col, tview.NewTableCell(fmt.Sprintf("$%.2f", sellingPrice)).
+			SetAlign(tview.AlignCenter))
+		col++
+
+		rsuOrderClone := rsuOrder.Clone()
+		rsuOrderClone.SellingPricePerShare = sellingPrice
+		rsuOrderSummary, err := rsuOrderClone.CalculateRsuOrderSummary()
+		if err != nil {
+			status.SetText(fmt.Sprintf("Error occurred: %v", err))
+			currentDataView = RsuError
+			return
+		}
+		table.SetCell(row, col, tview.NewTableCell(fmt.Sprintf("$%.2f", rsuOrderSummary.TotalSellingPrice)).
+			SetAlign(tview.AlignCenter))
+		col++
+		table.SetCell(row, col, tview.NewTableCell(fmt.Sprintf("$%.2f", rsuOrderSummary.EffectiveCommission)).
+			SetAlign(tview.AlignCenter))
+		col++
+		table.SetCell(row, col, tview.NewTableCell(fmt.Sprintf("$%.2f", rsuOrderSummary.NetResult)).
+			SetAlign(tview.AlignCenter))
+		col++
+		table.SetCell(row, col, tview.NewTableCell(fmt.Sprintf("$%.2f", rsuOrderSummary.CapitalGainTaxAmount)).
+			SetAlign(tview.AlignCenter))
+		col++
+		table.SetCell(row, col, tview.NewTableCell(fmt.Sprintf("$%.2f", rsuOrderSummary.ProfitOrLossAfterCapitalGainsTax())).
+			SetAlign(tview.AlignCenter))
+		col++
+		table.SetCell(row, col, tview.NewTableCell(fmt.Sprintf("$%.2f", rsuOrderSummary.TotalIncomeTaxIncurred)).
+			SetAlign(tview.AlignCenter))
+		col++
+		table.SetCell(row, col, tview.NewTableCell(fmt.Sprintf("$%.2f", rsuOrderSummary.ProfitOrLossAfterIncomeTax())).
+			SetAlign(tview.AlignCenter))
+		col++
+		table.SetCell(row, col, tview.NewTableCell(fmt.Sprintf("$%.2f", rsuOrderSummary.TrueProfitOrLoss())).
+			SetAlign(tview.AlignCenter))
+		col++
+
+		row++
+	}
+
+	enableTableScroll(table)
+	table.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		switch event.Key() {
+		case tcell.KeyCtrlI:
+			app.SetFocus(form)
+		}
+		return event
+	})
+	form.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		switch event.Key() {
+		case tcell.KeyCtrlD:
+			if currentDataView == RsuTargetProfits {
+				app.SetFocus(table)
+			}
+		}
+		return event
+	})
+
+	// Set up the layout with the table
+	summary.
+		SetDirection(tview.FlexRow).
+		AddItem(table, 0, 1, true)
+
+	status.SetText("Target Profits: [ <ctrl+i> to switch focus to input form | <ctrl+d> to switch focus to Data View ]")
+	app.SetFocus(table)
+	currentDataView = RsuTargetProfits
+}
+
 func buildRsuOrder(sellingPricePerShare float64,
 	shareQty int,
 	considerCommission bool,
@@ -174,7 +334,8 @@ func buildRsuOrder(sellingPricePerShare float64,
 	considerCapitalGainTax bool,
 	capitalGainTax float64,
 	considerIncomeTax bool,
-	incomeTaxPercent float64,
+	incomeTaxIncurred float64,
+	noOfStocksVested int,
 	marketPriceOnVestedStockPerShare float64) *types.RsuOrder {
 	rsuOrder := types.RsuOrder{}
 	// Retrieve values
@@ -194,9 +355,10 @@ func buildRsuOrder(sellingPricePerShare float64,
 
 	if considerIncomeTax {
 		rsuOrder.ConsiderIncomeTaxOnVestedStock = true
-		rsuOrder.IncomeTaxPercentOnVestedStockPerShare = incomeTaxPercent
-		rsuOrder.MarketPriceOnVestedStockPerShare = marketPriceOnVestedStockPerShare
+		rsuOrder.IncomeTaxIncurredWhenStockVested = incomeTaxIncurred
+		rsuOrder.NumberOfStocksVested = noOfStocksVested
 	}
+	rsuOrder.MarketValuePerShare = marketPriceOnVestedStockPerShare
 	return &rsuOrder
 }
 
@@ -206,7 +368,12 @@ func calculateRsu(rsuOrder *types.RsuOrder,
 	status.SetText("Calculating...")
 	clearFlexItems(summary)
 
-	rsuOrderSummary := rsuOrder.CalculateRsuOrderSummary()
+	rsuOrderSummary, err := rsuOrder.CalculateRsuOrderSummary()
+	if err != nil {
+		status.SetText(fmt.Sprintf("Error occurred: %v", err))
+		currentDataView = RsuError
+		return
+	}
 
 	sellingPricePerShareField := tview.NewTextView().
 		SetLabel(fmt.Sprintf("Selling price per share: $%.2f", rsuOrder.SellingPricePerShare)).
@@ -235,9 +402,9 @@ func calculateRsu(rsuOrder *types.RsuOrder,
 	}
 
 	profitOrLoss := rsuOrderSummary.NetResult
-	if rsuOrderSummary.IsProfitable {
+	if profitOrLoss > 0 {
 		profitOrLossField := tview.NewTextView().
-			SetLabel(fmt.Sprintf("Profit (before capital gains tax): $%.2f", profitOrLoss)).
+			SetLabel(fmt.Sprintf("Profit or Loss (before taxes): $%.2f", profitOrLoss)).
 			SetTextAlign(tview.AlignLeft)
 		summary.AddItem(profitOrLossField, 1, 1, false)
 
@@ -247,12 +414,6 @@ func calculateRsu(rsuOrder *types.RsuOrder,
 				SetLabel(fmt.Sprintf("Captial gain tax amount: $%.2f", capitalGainTaxAmount)).
 				SetTextAlign(tview.AlignLeft)
 			summary.AddItem(capitalGainTaxAmountField, 1, 1, false)
-
-			effectiveProfit := profitOrLoss - capitalGainTaxAmount
-			effectiveProfitField := tview.NewTextView().
-				SetLabel(fmt.Sprintf("Profit (after capital gain tax): $%.2f", effectiveProfit)).
-				SetTextAlign(tview.AlignLeft)
-			summary.AddItem(effectiveProfitField, 1, 1, false)
 		}
 	} else if profitOrLoss < 0 {
 		profitOrLossField := tview.NewTextView().
@@ -267,19 +428,33 @@ func calculateRsu(rsuOrder *types.RsuOrder,
 	}
 
 	if rsuOrder.ConsiderIncomeTaxOnVestedStock {
+		incomeTaxPerShare, err := rsuOrder.CalculateIncomeTaxPerShare()
+		if err == nil {
+			incomeTaxPerShareField := tview.NewTextView().
+				SetLabel(fmt.Sprintf("Income tax per share: $%.2f", incomeTaxPerShare)).
+				SetTextAlign(tview.AlignLeft)
+			summary.AddItem(incomeTaxPerShareField, 1, 1, false)
+		}
+
 		totalIncomeTaxIncurred := rsuOrderSummary.TotalIncomeTaxIncurred
 		totalIncomeTaxIncurredField := tview.NewTextView().
 			SetLabel(fmt.Sprintf("Total income tax amount: $%.2f", totalIncomeTaxIncurred)).
 			SetTextAlign(tview.AlignLeft)
 		summary.AddItem(totalIncomeTaxIncurredField, 1, 1, false)
-
-		effectiveProfitOrLoss := rsuOrderSummary.ProfitOrLossAfterIncomeTax
-		effectiveProfitOrLossField := tview.NewTextView().
-			SetLabel(fmt.Sprintf("Effective Profit/Loss: $%.2f", effectiveProfitOrLoss)).
-			SetTextAlign(tview.AlignLeft)
-		summary.AddItem(effectiveProfitOrLossField, 1, 1, false)
 	}
 
+	trueProfitOrLoss := rsuOrderSummary.TrueProfitOrLoss()
+	trueProfitOrLossField := tview.NewTextView().
+		SetLabel(fmt.Sprintf("True Profit/Loss: $%.2f", trueProfitOrLoss)).
+		SetTextAlign(tview.AlignLeft)
+	summary.AddItem(trueProfitOrLossField, 1, 1, false)
+
+	profitOrLossMargin := rsuOrderSummary.ProfitOrLossMargin()
+	profitOrLossMarginField := tview.NewTextView().
+		SetLabel(fmt.Sprintf("Profit/Loss Margin: %.2f%%", profitOrLossMargin)).
+		SetTextAlign(tview.AlignLeft)
+	summary.AddItem(profitOrLossMarginField, 1, 1, false)
+
 	status.SetText("Summary: ")
-	currentDataView = "RSU_ORDER_SUMMARY"
+	currentDataView = RsuOrderSummary
 }

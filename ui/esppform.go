@@ -190,7 +190,7 @@ func calculateEsppTargetProfits(esppOrder *types.EsppOrder,
 		SetFixed(1, 1)
 
 	for index, header := range []string{
-		"Target Profit %",
+		"Profit %",
 		"Selling price/share ($)",
 		"Total Selling Price ($)",
 		"Total Cost ($)",
@@ -217,7 +217,7 @@ func calculateEsppTargetProfits(esppOrder *types.EsppOrder,
 		// Set profit percentage and calculated selling price in the table
 		var targetProfitHeader = fmt.Sprintf("%.0f%%", percent)
 		if percent == 0 {
-			targetProfitHeader = fmt.Sprintf("%.0f%% (break-even)", percent)
+			targetProfitHeader = fmt.Sprintf("%.0f%%", percent)
 		}
 		var col = 0
 		table.SetCell(row, col, tview.NewTableCell(targetProfitHeader).
@@ -239,13 +239,13 @@ func calculateEsppTargetProfits(esppOrder *types.EsppOrder,
 		table.SetCell(row, col, tview.NewTableCell(fmt.Sprintf("$%.2f", esppOrderSummary.EffectiveCommission)).
 			SetAlign(tview.AlignCenter))
 		col++
-		table.SetCell(row, col, tview.NewTableCell(fmt.Sprintf("$%.2f", esppOrderSummary.ProfitBeforeCapitalGainTax)).
+		table.SetCell(row, col, tview.NewTableCell(fmt.Sprintf("$%.2f", esppOrderSummary.NetResult)).
 			SetAlign(tview.AlignCenter))
 		col++
 		table.SetCell(row, col, tview.NewTableCell(fmt.Sprintf("$%.2f", esppOrderSummary.CapitalGainTaxAmount)).
 			SetAlign(tview.AlignCenter))
 		col++
-		table.SetCell(row, col, tview.NewTableCell(fmt.Sprintf("$%.2f", esppOrderSummary.ProfitAfterCapitalGainTax)).
+		table.SetCell(row, col, tview.NewTableCell(fmt.Sprintf("$%.2f", esppOrderSummary.ProfitOrLossAfterCapitalGainsTax())).
 			SetAlign(tview.AlignCenter))
 		col++
 
@@ -263,7 +263,7 @@ func calculateEsppTargetProfits(esppOrder *types.EsppOrder,
 	form.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		switch event.Key() {
 		case tcell.KeyCtrlD:
-			if currentDataView == "ESPP_TARGET_PROFITS" {
+			if currentDataView == EsppTargetProfits {
 				app.SetFocus(table)
 			}
 		}
@@ -277,7 +277,7 @@ func calculateEsppTargetProfits(esppOrder *types.EsppOrder,
 
 	status.SetText("Target Profits: [ <ctrl+i> to switch focus to input form | <ctrl+d> to switch focus to Data View ]")
 	app.SetFocus(table)
-	currentDataView = "ESPP_TARGET_PROFITS"
+	currentDataView = EsppTargetProfits
 }
 
 func buildEsppOrder(costPerShare float64,
@@ -328,7 +328,7 @@ func calculateEspp(esppOrder *types.EsppOrder,
 
 	effectiveCostPerShare := esppOrderSummary.EffectiveCostPerShare
 	effectiveCostPerShareField := tview.NewTextView().
-		SetLabel(fmt.Sprintf("Effective cost per share: $%.2f", effectiveCostPerShare)).
+		SetLabel(fmt.Sprintf("True cost per share: $%.2f", effectiveCostPerShare)).
 		SetTextAlign(tview.AlignLeft)
 	summary.AddItem(effectiveCostPerShareField, 1, 1, false)
 
@@ -366,7 +366,7 @@ func calculateEspp(esppOrder *types.EsppOrder,
 	}
 
 	profitOrLoss := esppOrderSummary.NetResult
-	if esppOrderSummary.IsProfitable {
+	if esppOrderSummary.NetResult > 0 {
 		profitOrLossField := tview.NewTextView().
 			SetLabel(fmt.Sprintf("Profit (before capital gains tax): $%.2f", profitOrLoss)).
 			SetTextAlign(tview.AlignLeft)
@@ -379,7 +379,7 @@ func calculateEspp(esppOrder *types.EsppOrder,
 				SetTextAlign(tview.AlignLeft)
 			summary.AddItem(capitalGainTaxAmountField, 1, 1, false)
 
-			effectiveProfit := esppOrderSummary.ProfitAfterCapitalGainTax
+			effectiveProfit := esppOrderSummary.ProfitOrLossAfterCapitalGainsTax()
 			effectiveProfitField := tview.NewTextView().
 				SetLabel(fmt.Sprintf("Profit (after capital gain tax): $%.2f", effectiveProfit)).
 				SetTextAlign(tview.AlignLeft)
@@ -397,6 +397,12 @@ func calculateEspp(esppOrder *types.EsppOrder,
 		summary.AddItem(profitOrLossField, 1, 1, false)
 	}
 
+	gainOrLossMargin := esppOrderSummary.ProfitOrLossMargin()
+	gainOrLossMarginField := tview.NewTextView().
+		SetLabel(fmt.Sprintf("Gain/Loss Margin: %.2f%%", gainOrLossMargin)).
+		SetTextAlign(tview.AlignLeft)
+	summary.AddItem(gainOrLossMarginField, 1, 1, false)
+
 	status.SetText("Summary: ")
-	currentDataView = "ESPP_ORDER_SUMMARY"
+	currentDataView = EsppOrderSummary
 }

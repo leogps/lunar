@@ -8,8 +8,8 @@ import (
 
 var rootCmd = &cobra.Command{
 	// Use:   "yeet-cli [command] [flags]",
-	Short: "lunar is a CLI tool for stocks.",
-	Long:  `lunar is a CLI tool for stocks.`,
+	Short: "lunar is a CLI tool to perform calculations for stocks.",
+	Long:  `lunar is a CLI tool to perform calculations for stocks.`,
 	Run: func(cmd *cobra.Command, _ []string) {
 		// This will be executed when no subcommand is specified
 		utils.LogInfo("lunar: please pass sub-command. See help for more details:")

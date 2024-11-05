@@ -31,7 +31,7 @@ var esppCmd = &cobra.Command{
 }
 
 func handleEspp() {
-	discountPercent, err := PromptAndValidate[float64]("What is the discounted (buying) price percent per share? ")
+	discountPercent, err := PromptAndValidate[float64]("What is the discounted (buying) price percent per share (%)? ")
 	if err != nil {
 		utils.LogError("error occurred", err)
 		os.Exit(1)
@@ -40,7 +40,7 @@ func handleEspp() {
 		DiscountPercent: discountPercent,
 	}
 
-	costPricePerShare, err := PromptAndValidate[float64]("What is the cost price per share (with/without look-back)? ")
+	costPricePerShare, err := PromptAndValidate[float64]("What is the cost price per share (with/without look-back) ($)? ")
 	if err != nil {
 		utils.LogError("error occurred", err)
 		os.Exit(1)
@@ -52,7 +52,7 @@ func handleEspp() {
 	effectiveCostPerShare := esppOrder.CalculateEffectiveCostPerShare()
 	utils.LogInfo("Effective Cost per share: $%.2f", effectiveCostPerShare)
 
-	sellingPrice, err := PromptAndValidate[float64]("What is the selling price per share? ")
+	sellingPrice, err := PromptAndValidate[float64]("What is the selling price per share ($)? ")
 	if err != nil {
 		utils.LogError("error occurred", err)
 		os.Exit(1)
@@ -66,7 +66,7 @@ func handleEspp() {
 	}
 	esppOrder.NumberOfSharesSold = numberOfShares
 
-	considerTransactionCommission, err := PromptAndValidate[bool]("Deduct transaction commission? ")
+	considerTransactionCommission, err := PromptAndValidate[bool]("Deduct transaction commission[Y/N]? ")
 	if err != nil {
 		utils.LogError("error occurred", err)
 		os.Exit(1)
@@ -74,7 +74,7 @@ func handleEspp() {
 	esppOrder.ConsiderTransactionCommission = considerTransactionCommission
 
 	if considerTransactionCommission {
-		commissionPaidPerTransaction, err := PromptAndValidate[float64]("What is the commission paid per transaction? ")
+		commissionPaidPerTransaction, err := PromptAndValidate[float64]("What is the commission paid per transaction ($)? ")
 		if err != nil {
 			utils.LogError("error occurred", err)
 			os.Exit(1)
@@ -100,7 +100,7 @@ func handleEspp() {
 	if profitOrLoss > 0 {
 		utils.LogInfo("Profit: $%.2f", profitOrLoss)
 
-		deductCapitalGains, err := PromptAndValidate[bool]("Do you want to calculate capital gain tax and deduct from the profit? ")
+		deductCapitalGains, err := PromptAndValidate[bool]("Do you want to calculate capital gain tax and deduct from the profit[Y/N]? ")
 		if err != nil {
 			utils.LogError("error occurred", err)
 			os.Exit(1)
@@ -122,7 +122,7 @@ func handleEspp() {
 			utils.LogInfo("Capital Gain Amount: $%.2f", capitalGainTaxAmount)
 
 			effectiveProfit := profitOrLoss - capitalGainTaxAmount
-			utils.LogInfo("Effective profit: $%.2f", effectiveProfit)
+			utils.LogInfo("True profit: $%.2f", effectiveProfit)
 		}
 
 	}
