@@ -41,8 +41,11 @@ clean:
 	@echo "Cleaning binaries..."
 	@rm -rf $(BIN_DIR)
 
+tidy:
+	go mod tidy
+
 # Build binaries for all platforms
-build-all: clean
+build-all: clean | tidy
 	@mkdir -p $(BIN_DIR)
 	@for platform in $(PLATFORMS); do \
 		GOOS=$$(echo $$platform | cut -d'/' -f1); \
