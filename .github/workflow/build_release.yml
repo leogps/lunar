@@ -2,8 +2,8 @@ name: Build and Release Go Project
 
 on:
   push:
-    tags:
-      - 'v*.*.*' # Matches tags in vx.y.z format
+    branches:
+      - '**'    # Triggers on every push to any branch, including tags
 
 jobs:
   build:
@@ -85,6 +85,6 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: binaries/*
+          asset_path: binaries/*.zip
           asset_name: $(basename $asset_path)
           asset_content_type: application/zip
