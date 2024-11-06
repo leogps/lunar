@@ -1,0 +1,90 @@
+name: Build and Release Go Project
+
+on:
+  push:
+    tags:
+      - 'v*.*.*' # Matches tags in vx.y.z format
+
+jobs:
+  build:
+    name: Build binaries
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        goos: [linux, windows, darwin]
+        goarch: [amd64, arm64]
+    env:
+      APP_NAME: lunar
+      BIN_DIR: ./bin
+      SRC_FILE: main.go
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Go
+        uses: actions/setup-go@v3
+        with:
+          go-version: '1.20'
+
+      - name: Build binary
+        run: |
+          mkdir -p ${BIN_DIR}
+          OUTPUT_NAME=${BIN_DIR}/${APP_NAME}-${{ matrix.goos }}-${{ matrix.goarch }}
+          if [ "${{ matrix.goos }}" = "windows" ]; then OUTPUT_NAME=${OUTPUT_NAME}.exe; fi
+          GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} go build -o ${OUTPUT_NAME} ${SRC_FILE}
+      - name: Archive binaries
+        run: |
+          zip -j ${BIN_DIR}/${APP_NAME}-${{ matrix.goos }}-${{ matrix.goarch }}.zip ${BIN_DIR}/${APP_NAME}-${{ matrix.goos }}-${{ matrix.goarch }}*
+
+      - name: Upload binaries as artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: binaries
+          path: ${BIN_DIR}/*.zip
+
+  release:
+    name: Create Release
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Download built binaries
+        uses: actions/download-artifact@v3
+        with:
+          name: binaries
+          path: binaries
+
+      - name: Create Release Branch
+        env:
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          RELEASE_BRANCH="release/${TAG_NAME}"
+          git config user.name "${{ github.actor }}"
+          git config user.email "${{ github.actor }}@users.noreply.github.com"
+          git checkout -b ${RELEASE_BRANCH}
+          git push origin ${RELEASE_BRANCH}
+
+      - name: Create GitHub Release
+        id: create_release
+        uses: actions/create-release@v1
+        with:
+          tag_name: ${{ github.ref_name }}
+          release_name: Release ${{ github.ref_name }}
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload Release Assets
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: binaries/*
+          asset_name: $(basename $asset_path)
+          asset_content_type: application/zip
