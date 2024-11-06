@@ -118,6 +118,7 @@ func TestRsuOrder_CalculateSellingPriceFor290PercentProfit(t *testing.T) {
 		CapitalGainTaxPercent:            24,
 		ConsiderIncomeTaxOnVestedStock:   true,
 		IncomeTaxIncurredWhenStockVested: 2166.12,
+		NumberOfStocksVested:             33,
 		MarketValuePerShare:              190.39,
 	}
 

@@ -44,8 +44,11 @@ clean:
 tidy:
 	go mod tidy
 
+test:
+	go test -v ./...
+
 # Build binaries for all platforms
-build-all: clean | tidy
+build-all: clean | tidy test
 	@mkdir -p $(BIN_DIR)
 	@for platform in $(PLATFORMS); do \
 		GOOS=$$(echo $$platform | cut -d'/' -f1); \
