@@ -35,7 +35,7 @@ func StartApp() error {
 
 	// Create a dropdown for selecting ESPP or RSU
 	selectBox := tview.NewDropDown().
-		SetLabel("Select Order Type (hit Enter): ").
+		SetLabel("Select Order Type (hit Enter/Space to choose): ").
 		SetOptions([]string{"ESPP", "RSU"}, func(option string, index int) {
 			// Show the corresponding form when an option is selected
 			showMainForm(option)
