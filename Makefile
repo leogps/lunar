@@ -68,11 +68,12 @@ build-release: build-all
 		GOOS=$$(echo $$platform | cut -d'/' -f1); \
 		GOARCH=$$(echo $$platform | cut -d'/' -f2); \
 		OUTPUT_NAME=$(BIN_DIR)/$(APP_NAME)-$$GOOS-$$GOARCH; \
+		OUTPUT_FILE_NAME=$(APP_NAME)-$$GOOS-$$GOARCH; \
 		if [ "$$GOOS" = "windows" ]; then \
-			zip $$OUTPUT_NAME.zip $$OUTPUT_NAME.exe; \
+			zip -j $$OUTPUT_NAME.zip $$OUTPUT_NAME.exe; \
 			echo "Zipped $$OUTPUT_NAME.exe to $$OUTPUT_NAME.zip"; \
 		elif [ "$$GOOS" = "linux" ] || [ "$$GOOS" = "darwin" ]; then \
-			tar -czf $$OUTPUT_NAME.tar.gz $$OUTPUT_NAME; \
+			tar -cvzf $$OUTPUT_NAME.tar.gz -C $(BIN_DIR) $$OUTPUT_FILE_NAME; \
 			echo "Packed $$OUTPUT_NAME to $$OUTPUT_NAME.tar.gz"; \
 		fi; \
 	done
