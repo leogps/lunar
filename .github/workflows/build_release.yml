@@ -50,27 +50,36 @@ jobs:
         id: extract_tag
         run: echo "TAG_NAME=$(basename ${{ github.ref }})" >> $GITHUB_ENV
 
-      - name: Create GitHub Release
+      - name: Create Release
         id: create_release
         uses: actions/create-release@v1
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # This token is provided by Actions, you do not need to create your own token
         with:
-          tag_name: ${{ env.TAG_NAME }}-${{ github.run_number }}
-          release_name: Release ${{ env.TAG_NAME }}-${{ github.run_number }} Executables
+          tag_name: exe_${{ env.TAG_NAME }}
+          release_name: Release ${{ env.TAG_NAME }} Executables
           draft: false
           prerelease: false
 
       - name: Upload binaries to release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           for file in ./bin/*.tar.gz ./bin/*.zip ./bin/*.sha256; do
             # Upload each matching file
             echo "Uploading $file"
+          
+            # Get the file size in bytes
+            file_size=$(wc -c < "$file")
+          
+            # Get the MIME type of the file
+            mime_type=$(file -b --mime-type "$file")
 
             curl -L -X POST \
+              -H "Content-Length: $file_size" \
+              -H "Content-Type: $mime_type" \
               -H "Accept: application/vnd.github+json" \
               -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
               -H "X-GitHub-Api-Version: 2022-11-28" \
-              -H "Content-Type: application/octet-stream" \
-              "https://uploads.github.com/repos/${{ github.repository }}/releases/${{ steps.create_release.outputs.id }}/assets?name=$(basename $file)" | cat
+              "${{ steps.create_release.outputs.upload_url }}?name=$(basename $file)" | cat
           done
