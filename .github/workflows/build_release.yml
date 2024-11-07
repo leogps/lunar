@@ -44,7 +44,7 @@ jobs:
           go-version: '1.23'
 
       - name: Build binaries for all platforms
-        run: make build-all
+        run: make build-release
 
       - name: Extract Tag Name
         id: extract_tag
@@ -62,9 +62,13 @@ jobs:
           prerelease: false
 
       - name: Upload binaries to release
-        uses: actions/upload-release-asset@v1
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./bin/*
-          asset_name: $(basename $asset_path)
-          asset_content_type: application/zip
+        run: |
+          for file in ./bin/*.tar.gz ./bin/*.zip ./bin/*.sha256; do
+          # Upload each matching file
+          echo "Uploading $file"
+          curl -X POST \
+          -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+          -H "Content-Type: $(file --mime-type -b $file)" \
+          --data-binary @$file \
+          "https://uploads.github.com/repos/${{ github.repository }}/releases/${{ steps.create_release.outputs.id }}/assets?name=$(basename $file)"
+          done

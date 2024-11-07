@@ -59,6 +59,27 @@ build-all: clean | tidy test
 		GOOS=$$GOOS GOARCH=$$GOARCH go build -o $$OUTPUT_NAME $(SRC_FILE); \
 	done
 
+# Build release binaries and package them
+build-release: build-all
+	@echo "Packaging release binaries..."
+	@for platform in $(PLATFORMS); do \
+		GOOS=$$(echo $$platform | cut -d'/' -f1); \
+		GOARCH=$$(echo $$platform | cut -d'/' -f2); \
+		OUTPUT_NAME=$(BIN_DIR)/$(APP_NAME)-$$GOOS-$$GOARCH; \
+		if [ "$$GOOS" = "windows" ]; then \
+			zip $$OUTPUT_NAME.zip $$OUTPUT_NAME.exe; \
+			echo "Zipped $$OUTPUT_NAME.exe to $$OUTPUT_NAME.zip"; \
+		elif [ "$$GOOS" = "linux" ] || [ "$$GOOS" = "darwin" ]; then \
+			tar -czf $$OUTPUT_NAME.tar.gz $$OUTPUT_NAME; \
+			echo "Packed $$OUTPUT_NAME to $$OUTPUT_NAME.tar.gz"; \
+		fi; \
+	done
+
+	# Create checksum file for all zip and tar.gz files
+	@echo "Generating checksum file..."
+	@sha256sum $(BIN_DIR)/*.{tar.gz,zip} > $(BIN_DIR)/checksum.sha256
+	@echo "Checksum file generated: $(BIN_DIR)/checksum.sha256"
+
 # Default install for the current OS/Arch
 install:
 	@echo "Building and installing $(APP_NAME) for the current platform..."
