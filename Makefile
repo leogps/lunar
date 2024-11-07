@@ -81,6 +81,7 @@ build-release: build-all
 	@echo "Generating checksum file..."
 	@cd $(BIN_DIR) && find * -type f \( -name "*.gz" -o -name "*.zip" \) -exec sha256sum {} \; > checksum.sha256
 	@echo "Checksum file generated: $(BIN_DIR)/checksum.sha256"
+	@cat $(BIN_DIR)/checksum.sha256
 
 # Default install for the current OS/Arch
 install:
