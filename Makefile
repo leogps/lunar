@@ -42,9 +42,11 @@ clean:
 	@rm -rf $(BIN_DIR)
 
 tidy:
+	@echo "Running tidy..."
 	go mod tidy
 
 test:
+	@echo "Running tests..."
 	go test -v ./...
 
 # Build binaries for all platforms
