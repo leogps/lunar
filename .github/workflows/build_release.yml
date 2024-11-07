@@ -70,8 +70,9 @@ jobs:
             echo "Uploading $file"
           
             curl -f -L -X POST \
+              -H "Content-Type: application/octet-stream" \
               -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
               -H "X-GitHub-Api-Version: 2022-11-28" \
               --data-binary "$file" \
-              "${{ steps.create_release.outputs.upload_url }}=$(basename $file)"
+              "https://uploads.github.com/repos/${{ github.repository }}/releases/${{ steps.create_release.outputs.id }}/assets?name=$(basename $file)"
           done
