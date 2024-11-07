@@ -77,7 +77,7 @@ build-release: build-all
 
 	# Create checksum file for all zip and tar.gz files
 	@echo "Generating checksum file..."
-	@sha256sum $(BIN_DIR)/*.{tar.gz,zip} > $(BIN_DIR)/checksum.sha256
+	@cd $(BIN_DIR) && find * -type f \( -name "*.gz" -o -name "*.zip" \) -exec sha256sum {} \; > checksum.sha256
 	@echo "Checksum file generated: $(BIN_DIR)/checksum.sha256"
 
 # Default install for the current OS/Arch
